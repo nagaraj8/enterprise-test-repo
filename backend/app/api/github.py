@@ -29,6 +29,7 @@ async def github_webhook(request: Request):
     embedding = create_embedding(event_text)
 
     print(event_text)
+    
     print(len(embedding))
 
     with engine.connect() as conn:
