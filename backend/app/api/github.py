@@ -13,6 +13,13 @@ async def github_webhook(request: Request):
     actor = payload.get('sender', {}).get('login')
     action = payload.get('action')
 
+    
+
+    repository = payload.get(
+        'repository',
+        {}
+    ).get('name')
+
     event_text = f'''
     GitHub event:
     actor={actor}
@@ -20,11 +27,9 @@ async def github_webhook(request: Request):
     repository={repository}
     '''
     embedding = create_embedding(event_text)
-    
-    repository = payload.get(
-        'repository',
-        {}
-    ).get('name')
+
+    print(event_text)
+    print(len(embedding))
 
     with engine.connect() as conn:
         conn.execute(
