@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Request
 from sqlalchemy import text
 from app.database.db import engine
-from sqlalchemy.dialects.postgresql import JSONB
 from app.services.embedding_service import create_embedding
 import json
 
@@ -30,45 +29,41 @@ async def github_webhook(request: Request):
     embedding = create_embedding(event_text)
 
     print(event_text)
+    
     print(len(embedding))
 
     with engine.connect() as conn:
-        query = text(
-            '''
-            INSERT INTO events (
-                source,
-                actor,
-                action,
-                target,
-                event_type,
-                raw_data,
-                embedding
-            )
-            VALUES (
-                :source,
-                :actor,
-                :action,
-                :target,
-                :event_type,
-                :raw_data,
-                :embedding
-            )
-            '''
-        ).bindparams(
-            raw_data=JSONB,
-            embedding=JSONB
-        )
-
         conn.execute(
-            query,
+            text(
+                '''
+                INSERT INTO events (
+                    source,
+                    actor,
+                    action,
+                    target,
+                    event_type,
+                    raw_data,
+                    embedding
+                )
+                VALUES (
+                    :source,
+                    :actor,
+                    :action,
+                    :target,
+                    :event_type,
+                    :raw_data,
+                    :embedding
+                )
+                '''
+            ),
             {
                 'source': 'github',
                 'actor': actor,
                 'action': action,
                 'target': repository,
                 'event_type': 'github_event',
-                'raw_data': payload,
-                'embedding': embedding
+                'raw_data': json.dumps(payload),
+                'embedding': json.dumps(embedding)
             }
         )
 
