@@ -1,5 +1,6 @@
 import AIQueryBox from '../components/AIQueryBox'
 import Timeline from '../components/Timeline'
+import SemanticSearch from '../components/SemanticSearch'
 
 export default function HomePage() {
   return (
@@ -12,6 +13,7 @@ export default function HomePage() {
         <AIQueryBox />
 
         <Timeline />
+        <SemanticSearch />
       </div>
     </main>
   )

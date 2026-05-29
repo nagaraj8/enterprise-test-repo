@@ -8,6 +8,11 @@ router = APIRouter()
 
 @router.post('/github/webhook')
 async def github_webhook(request: Request):
+    payload = await request.json()
+
+    actor = payload.get('sender', {}).get('login')
+    action = payload.get('action')
+
     event_text = f'''
     GitHub event:
     actor={actor}
@@ -15,11 +20,7 @@ async def github_webhook(request: Request):
     repository={repository}
     '''
     embedding = create_embedding(event_text)
-    payload = await request.json()
-
-    actor = payload.get('sender', {}).get('login')
-    action = payload.get('action')
-
+    
     repository = payload.get(
         'repository',
         {}

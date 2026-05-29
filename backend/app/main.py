@@ -6,6 +6,7 @@ from app.api.github import router as github_router
 from app.api.slack import router as slack_router
 from app.api.timeline import router as timeline_router
 from app.api.reasoning import router as reasoning_router
+from app.api.search import router as search_router
 
 app = FastAPI()
 
@@ -23,6 +24,7 @@ app.include_router(github_router)
 app.include_router(slack_router)
 app.include_router(timeline_router)
 app.include_router(reasoning_router)
+app.include_router(search_router)
 
 @app.get('/')
 def root():
