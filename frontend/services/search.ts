@@ -1,16 +1,16 @@
-export async function semanticSearch(
-  query: string
-) {
-  const response = await fetch(
-    'http://localhost:8000/search',
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ query }),
-    }
-  )
+import { SearchResult, request } from './client'
 
-  return response.json()
+export async function semanticSearch(
+  query: string,
+  source = 'all',
+  limit = 8
+) {
+  return request<SearchResult[]>('/search', {
+    method: 'POST',
+    body: JSON.stringify({
+      query,
+      source: source === 'all' ? undefined : source,
+      limit,
+    }),
+  })
 }

@@ -1,32 +1,13 @@
-from sqlalchemy import text
-from app.database.db import engine
+from app.services.event_repository import list_events
 
-def get_timeline():
-    with engine.connect() as conn:
-        result = conn.execute(
-            text(
-                '''
-                SELECT *
-                FROM events
-                ORDER BY timestamp DESC
-                LIMIT 50
-                '''
-            )
-        )
 
-        rows = result.fetchall()
-
-        timeline = []
-
-        for row in rows:
-            timeline.append(
-                {
-                    'source': row.source,
-                    'actor': row.actor,
-                    'action': row.action,
-                    'target': row.target,
-                    'timestamp': str(row.timestamp)
-                }
-            )
-
-        return timeline
+def get_timeline(
+    limit: int = 50,
+    source: str | None = None,
+    query: str | None = None,
+):
+    return list_events(
+        limit=limit,
+        source=source,
+        query=query,
+    )

@@ -1,7 +1,20 @@
-export async function fetchTimeline() {
-  const response = await fetch(
-    'http://localhost:8000/timeline'
-  )
+import { EventRecord, buildQuery, request } from './client'
 
-  return response.json()
+export type TimelineFilters = {
+  limit?: number
+  source?: string
+  q?: string
+}
+
+export async function fetchTimeline(filters: TimelineFilters = {}) {
+  const source =
+    filters.source && filters.source !== 'all' ? filters.source : undefined
+
+  return request<EventRecord[]>(
+    `/timeline${buildQuery({
+      limit: filters.limit ?? 50,
+      source,
+      q: filters.q,
+    })}`
+  )
 }

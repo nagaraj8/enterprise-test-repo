@@ -1,10 +1,20 @@
 from fastapi import APIRouter, Request
-from sqlalchemy import text
-from app.database.db import engine
 from app.services.embedding_service import create_embedding
-import json
+from app.services.event_repository import insert_event
 
 router = APIRouter()
+
+
+def extract_github_timestamp(payload: dict):
+    head_commit = payload.get('head_commit') or {}
+    repository = payload.get('repository') or {}
+
+    return (
+        payload.get('created_at')
+        or payload.get('updated_at')
+        or head_commit.get('timestamp')
+        or repository.get('pushed_at')
+    )
 
 @router.post('/github/webhook')
 async def github_webhook(request: Request):
@@ -28,46 +38,16 @@ async def github_webhook(request: Request):
     '''
     embedding = create_embedding(event_text)
 
-    print(event_text)
-    
-    print(len(embedding))
-
-    with engine.connect() as conn:
-        conn.execute(
-            text(
-                '''
-                INSERT INTO events (
-                    source,
-                    actor,
-                    action,
-                    target,
-                    event_type,
-                    raw_data,
-                    embedding
-                )
-                VALUES (
-                    :source,
-                    :actor,
-                    :action,
-                    :target,
-                    :event_type,
-                    :raw_data,
-                    :embedding
-                )
-                '''
-            ),
-            {
-                'source': 'github',
-                'actor': actor,
-                'action': action,
-                'target': repository,
-                'event_type': 'github_event',
-                'raw_data': json.dumps(payload),
-                'embedding': json.dumps(embedding)
-            }
-        )
-
-        conn.commit()
+    insert_event(
+        source='github',
+        actor=actor,
+        action=action,
+        target=repository,
+        event_type='github_event',
+        raw_data=payload,
+        embedding=embedding,
+        timestamp=extract_github_timestamp(payload),
+    )
 
     return {
         'status': 'stored'

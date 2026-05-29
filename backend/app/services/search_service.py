@@ -1,58 +1,55 @@
-import json
 import numpy as np
 
-from sqlalchemy import text
-from app.database.db import engine
 from app.services.embedding_service import create_embedding
+from app.services.event_repository import list_events
 
 def cosine_similarity(a, b):
-    a = np.array(a)
-    b = np.array(b)
+    a = np.array(a, dtype=float)
+    b = np.array(b, dtype=float)
 
-    return np.dot(a, b) / (
-        np.linalg.norm(a)
-        * np.linalg.norm(b)
+    denominator = np.linalg.norm(a) * np.linalg.norm(b)
+
+    if denominator == 0:
+        return 0
+
+    return np.dot(a, b) / denominator
+
+
+def semantic_search(
+    query: str,
+    limit: int = 8,
+    source: str | None = None,
+):
+    query_embedding = create_embedding(query)
+    rows = list_events(
+        limit=200,
+        source=source,
+        include_embedding=True,
     )
 
-def semantic_search(query: str):
-    query_embedding = create_embedding(query)
+    similarities = []
 
-    with engine.connect() as conn:
-        result = conn.execute(
-            text(
-                '''
-                SELECT *
-                FROM events
-                WHERE embedding IS NOT NULL
-                '''
-            )
+    for row in rows:
+        embedding = row.pop('embedding', None)
+
+        if not embedding:
+            continue
+
+        score = cosine_similarity(
+            query_embedding,
+            embedding
         )
 
-        rows = result.fetchall()
-
-        similarities = []
-
-        for row in rows:
-            embedding = json.loads(row.embedding)
-
-            score = cosine_similarity(
-                query_embedding,
-                embedding
-            )
-
-            similarities.append(
-                {
-                    'score': float(score),
-                    'actor': row.actor,
-                    'action': row.action,
-                    'target': row.target,
-                    'source': row.source
-                }
-            )
-
-        similarities.sort(
-            key=lambda x: x['score'],
-            reverse=True
+        similarities.append(
+            {
+                **row,
+                'score': float(score),
+            }
         )
 
-        return similarities[:5]
+    similarities.sort(
+        key=lambda item: item['score'],
+        reverse=True
+    )
+
+    return similarities[:limit]

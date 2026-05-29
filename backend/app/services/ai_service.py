@@ -1,24 +1,68 @@
-from openai import OpenAI
-from dotenv import load_dotenv
 import os
+
+from dotenv import load_dotenv
+from openai import OpenAI
+
+from app.services.timeline_service import get_timeline
 
 load_dotenv()
 
-client = OpenAI(
-    api_key=os.getenv('OPENAI_API_KEY')
-)
+client = None
+
+
+def get_client():
+    global client
+
+    if client is None:
+        client = OpenAI(
+            api_key=os.getenv('OPENAI_API_KEY')
+        )
+
+    return client
+
+
+def build_context(limit: int = 12) -> str:
+    events = get_timeline(limit=limit)
+
+    if not events:
+        return 'No operational events are currently stored.'
+
+    lines = []
+
+    for event in events:
+        lines.append(
+            (
+                f"- time={event.get('timestamp')}; "
+                f"source={event.get('source')}; "
+                f"actor={event.get('actor')}; "
+                f"action={event.get('action')}; "
+                f"target={event.get('target')}; "
+                f"type={event.get('event_type')}"
+            )
+        )
+
+    return '\n'.join(lines)
 
 def ask_ai(question: str):
-    response = client.chat.completions.create(
-        model='gpt-4.1-mini',
+    context = build_context()
+
+    response = get_client().chat.completions.create(
+        model=os.getenv('OPENAI_MODEL', 'gpt-4.1-mini'),
         messages=[
             {
                 'role': 'system',
-                'content': 'You are an enterprise operational intelligence AI.'
+                'content': (
+                    'You are an enterprise operational intelligence AI. '
+                    'Answer from the provided activity context first. '
+                    'Call out uncertainty and recommend the next concrete checks.'
+                )
             },
             {
                 'role': 'user',
-                'content': question
+                'content': (
+                    f'Question: {question}\n\n'
+                    f'Recent activity context:\n{context}'
+                )
             }
         ]
     )
