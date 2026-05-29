@@ -4,10 +4,13 @@ import { useEffect, useMemo, useState } from 'react'
 import AIQueryBox from '../components/AIQueryBox'
 import Timeline from '../components/Timeline'
 import SemanticSearch from '../components/SemanticSearch'
+import IncidentPanel from "../components/incidents/IncidentPanel"
+import DeploymentRiskPanel from '../components/DeploymentRiskPanel'
 import { Overview } from '../services/client'
 import { fetchOverview, fetchSources } from '../services/overview'
 
 const sources = ['all', 'github', 'slack', 'incident', 'deploy']
+type WorkspaceView = 'incidents' | 'timeline' | 'risk' | 'search' | 'ai'
 
 function formatCount(value?: number) {
   return new Intl.NumberFormat('en').format(value ?? 0)
@@ -31,6 +34,7 @@ function formatLatest(timestamp?: string | null, totalEvents = 0) {
 export default function HomePage() {
   const [source, setSource] = useState('all')
   const [query, setQuery] = useState('')
+  const [activeView, setActiveView] = useState<WorkspaceView>('incidents')
   const [overview, setOverview] = useState<Overview | null>(null)
   const [dynamicSources, setDynamicSources] = useState<string[]>(sources)
   const [overviewError, setOverviewError] = useState('')
@@ -79,24 +83,61 @@ export default function HomePage() {
   }, [])
 
   const topSource = overview?.sources[0]
+  const workspaceViews: Array<{
+    id: WorkspaceView
+    label: string
+    value: string
+    context: string
+  }> = [
+    {
+      id: 'incidents',
+      label: 'Active incidents',
+      value: formatCount(overview?.open_incidents),
+      context: 'open',
+    },
+    {
+      id: 'timeline',
+      label: 'Operational timeline',
+      value: formatCount(overview?.events_last_24h),
+      context: '24h',
+    },
+    {
+      id: 'risk',
+      label: 'Release readiness',
+      value: formatCount(overview?.deployments_last_24h),
+      context: 'deploys',
+    },
+    {
+      id: 'search',
+      label: 'Find related activity',
+      value: formatCount(overview?.total_events),
+      context: 'events',
+    },
+    {
+      id: 'ai',
+      label: 'Ask AI',
+      value: 'AI',
+      context: 'context',
+    },
+  ]
 
   return (
     <main className="min-h-screen bg-slate-100 text-slate-950">
-      <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
-        <header className="grid gap-5 border-b border-slate-200 pb-6 lg:grid-cols-[1fr_auto] lg:items-end">
+      <div className="mx-auto flex max-w-7xl flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8">
+        <header className="grid gap-5 border-b border-slate-200 pb-5 lg:grid-cols-[0.7fr_1.3fr] lg:items-center">
           <div>
             <p className="text-sm font-semibold uppercase text-emerald-700">
               Enterprise AI operations
             </p>
-            <h1 className="mt-2 text-4xl font-semibold text-slate-950 sm:text-5xl">
+            <h1 className="mt-2 text-3xl font-semibold text-slate-950 sm:text-4xl">
               Enterprise Decision Brain
             </h1>
-            <p className="mt-3 max-w-3xl text-base leading-7 text-slate-600">
-              Search operational activity, inspect history, and ask AI questions with incident context in one focused console.
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+              Incidents, timelines, release risk, related activity, and AI answers in one focused console.
             </p>
           </div>
 
-          <div className="grid gap-2 sm:min-w-96 sm:grid-cols-3">
+          <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-6">
             <div className="rounded-lg border border-slate-200 bg-white p-3">
               <p className="text-xs font-medium text-slate-500">Events</p>
               <p className="mt-1 text-lg font-semibold text-slate-950">
@@ -107,6 +148,24 @@ export default function HomePage() {
               <p className="text-xs font-medium text-slate-500">Last 24h</p>
               <p className="mt-1 text-lg font-semibold text-slate-950">
                 {formatCount(overview?.events_last_24h)}
+              </p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white p-3">
+              <p className="text-xs font-medium text-slate-500">Open incidents</p>
+              <p className="mt-1 text-lg font-semibold text-slate-950">
+                {formatCount(overview?.open_incidents)}
+              </p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white p-3">
+              <p className="text-xs font-medium text-slate-500">Services</p>
+              <p className="mt-1 text-lg font-semibold text-slate-950">
+                {formatCount(overview?.services)}
+              </p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white p-3">
+              <p className="text-xs font-medium text-slate-500">Deploys 24h</p>
+              <p className="mt-1 text-lg font-semibold text-slate-950">
+                {formatCount(overview?.deployments_last_24h)}
               </p>
             </div>
             <div className="rounded-lg border border-slate-200 bg-white p-3">
@@ -121,40 +180,24 @@ export default function HomePage() {
           </div>
         </header>
 
-        <section className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-[1fr_auto] md:items-center">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className={`h-2.5 w-2.5 rounded-full ${overviewError ? 'bg-amber-500' : 'bg-emerald-500'}`} />
-            <p className="text-sm font-semibold text-slate-800">
-              {overviewError || 'Operational data connected'}
-            </p>
-            {topSource && (
-              <p className="text-sm text-slate-500">
-                Top source: {topSource.source} / {formatCount(topSource.count)} events
+        <section className="sticky top-0 z-20 rounded-lg border border-slate-200 bg-white/95 p-4 shadow-sm backdrop-blur">
+          <div className="grid gap-4 xl:grid-cols-[1fr_auto] xl:items-center">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={`h-2.5 w-2.5 rounded-full ${overviewError ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+              <p className="text-sm font-semibold text-slate-800">
+                {overviewError || 'Operational data connected'}
               </p>
-            )}
-          </div>
+              {topSource && (
+                <p className="text-sm text-slate-500">
+                  Top source: {topSource.source} / {formatCount(topSource.count)} events
+                </p>
+              )}
+              <p className="text-sm text-slate-500">
+                Sources: {Math.max(availableSources.length - 1, 0)}
+              </p>
+            </div>
 
-          <p className="text-sm text-slate-500">
-            Sources: {Math.max(availableSources.length - 1, 0)}
-          </p>
-        </section>
-
-        <section className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm lg:grid-cols-[1fr_auto] lg:items-end">
-          <label className="block">
-            <span className="text-sm font-semibold text-slate-700">
-              Filter history
-            </span>
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Filter by service, actor, action, target, or source"
-              className="mt-2 h-11 w-full rounded-lg border border-slate-300 bg-slate-50 px-3 text-sm outline-none transition focus:border-slate-900 focus:bg-white"
-            />
-          </label>
-
-          <div>
-            <p className="text-sm font-semibold text-slate-700">Source</p>
-            <div className="mt-2 flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2">
               {availableSources.map((option) => (
                 <button
                   key={option}
@@ -171,14 +214,53 @@ export default function HomePage() {
               ))}
             </div>
           </div>
+
+          <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
+            <label className="block">
+              <span className="text-sm font-semibold text-slate-700">
+                Filter
+              </span>
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Service, actor, action, target, or source"
+                className="mt-2 h-11 w-full rounded-lg border border-slate-300 bg-slate-50 px-3 text-sm outline-none transition focus:border-slate-900 focus:bg-white"
+              />
+            </label>
+
+            <div>
+              <p className="text-sm font-semibold text-slate-700">Workspace</p>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                {workspaceViews.map((view) => (
+                  <button
+                    key={view.id}
+                    type="button"
+                    onClick={() => setActiveView(view.id)}
+                    aria-pressed={activeView === view.id}
+                    className={`min-h-16 rounded-lg border p-3 text-left transition ${
+                      activeView === view.id
+                        ? 'border-slate-950 bg-slate-950 text-white shadow-sm'
+                        : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-400 hover:bg-white'
+                    }`}
+                  >
+                    <span className="block text-sm font-semibold">
+                      {view.label}
+                    </span>
+                    <span className={`mt-1 block text-xs ${activeView === view.id ? 'text-slate-300' : 'text-slate-500'}`}>
+                      {view.value} {view.context}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
         </section>
 
-        <AIQueryBox />
-
-        <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-          <Timeline source={source} query={query} />
-          <SemanticSearch source={source} />
-        </div>
+        {activeView === 'incidents' && <IncidentPanel />}
+        {activeView === 'timeline' && <Timeline source={source} query={query} />}
+        {activeView === 'risk' && <DeploymentRiskPanel />}
+        {activeView === 'search' && <SemanticSearch source={source} />}
+        {activeView === 'ai' && <AIQueryBox />}
       </div>
     </main>
   )

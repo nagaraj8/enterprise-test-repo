@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 
 from app.services.embedding_service import create_embedding
 from app.services.event_repository import insert_event
+from app.services.operations_repository import observe_event
 
 router = APIRouter()
 
@@ -47,7 +48,7 @@ async def slack_events(request: Request):
     embedding = create_embedding(event_text)
 
     if text_message:
-        insert_event(
+        event_id = insert_event(
             source="slack",
             actor=user,
             action=text_message,
@@ -56,6 +57,17 @@ async def slack_events(request: Request):
             raw_data=payload,
             embedding=embedding,
             timestamp=extract_slack_timestamp(payload, event),
+        )
+        observe_event(
+            {
+                "id": event_id,
+                "source": "slack",
+                "actor": user,
+                "action": text_message,
+                "target": channel,
+                "event_type": event_type or "slack_message",
+                "timestamp": extract_slack_timestamp(payload, event),
+            }
         )
 
     return JSONResponse(

@@ -1,4 +1,5 @@
 import json
+import hashlib
 from datetime import datetime, timezone
 from typing import Any
 
@@ -14,9 +15,14 @@ EVENT_FIELDS = '''
     action,
     target,
     event_type,
+    service_name,
+    environment,
+    severity,
+    fingerprint,
     raw_data,
     embedding,
-    timestamp
+    timestamp,
+    ingested_at
 '''
 
 
@@ -39,7 +45,12 @@ def _row_to_event(row: Any, include_embedding: bool = False) -> dict[str, Any]:
         'action': mapping.get('action'),
         'target': mapping.get('target'),
         'event_type': mapping.get('event_type'),
+        'service_name': mapping.get('service_name'),
+        'environment': mapping.get('environment'),
+        'severity': mapping.get('severity'),
+        'fingerprint': mapping.get('fingerprint'),
         'timestamp': str(mapping.get('timestamp')) if mapping.get('timestamp') else None,
+        'ingested_at': str(mapping.get('ingested_at')) if mapping.get('ingested_at') else None,
         'summary': summarize_event(mapping),
     }
 
@@ -74,6 +85,21 @@ def summarize_event(row: Any) -> str:
     target = row.get('target') or 'unknown target'
 
     return f'{actor} {action} on {target} from {source}.'
+
+
+def build_event_fingerprint(
+    source: str,
+    actor: str | None,
+    action: str | None,
+    target: str | None,
+    event_type: str | None,
+) -> str:
+    normalized = '|'.join(
+        (value or '').strip().lower()
+        for value in (source, actor, action, target, event_type)
+    )
+
+    return hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:24]
 
 
 def parse_embedding(value: Any) -> list[float] | None:
@@ -152,6 +178,9 @@ def list_events(
                 OR LOWER(COALESCE(action, '')) LIKE LOWER(:query)
                 OR LOWER(COALESCE(target, '')) LIKE LOWER(:query)
                 OR LOWER(COALESCE(event_type, '')) LIKE LOWER(:query)
+                OR LOWER(COALESCE(service_name, '')) LIKE LOWER(:query)
+                OR LOWER(COALESCE(environment, '')) LIKE LOWER(:query)
+                OR LOWER(COALESCE(severity, '')) LIKE LOWER(:query)
                 OR LOWER(COALESCE(CAST(raw_data AS TEXT), '')) LIKE LOWER(:query)
             )
             '''
@@ -192,11 +221,23 @@ def insert_event(
     raw_data: dict[str, Any],
     embedding: list[float] | None = None,
     timestamp: Any = None,
-) -> None:
+    service_name: str | None = None,
+    environment: str | None = None,
+    severity: str | None = None,
+    fingerprint: str | None = None,
+) -> int:
     event_timestamp = normalize_event_timestamp(timestamp)
+    resolved_service_name = service_name or target
+    resolved_fingerprint = fingerprint or build_event_fingerprint(
+        source,
+        actor,
+        action,
+        target,
+        event_type,
+    )
 
     with engine.begin() as conn:
-        conn.execute(
+        result = conn.execute(
             text(
                 '''
                 INSERT INTO events (
@@ -205,6 +246,10 @@ def insert_event(
                     action,
                     target,
                     event_type,
+                    service_name,
+                    environment,
+                    severity,
+                    fingerprint,
                     raw_data,
                     embedding,
                     timestamp
@@ -215,10 +260,15 @@ def insert_event(
                     :action,
                     :target,
                     :event_type,
+                    :service_name,
+                    :environment,
+                    :severity,
+                    :fingerprint,
                     :raw_data,
                     :embedding,
                     :timestamp
                 )
+                RETURNING id
                 '''
             ),
             {
@@ -227,11 +277,17 @@ def insert_event(
                 'action': action,
                 'target': target,
                 'event_type': event_type,
+                'service_name': resolved_service_name,
+                'environment': environment,
+                'severity': severity,
+                'fingerprint': resolved_fingerprint,
                 'raw_data': json.dumps(raw_data),
                 'embedding': json.dumps(embedding) if embedding else None,
                 'timestamp': event_timestamp,
             },
         )
+
+        return result.fetchone()[0]
 
 
 def get_event_stats() -> dict[str, Any]:
@@ -255,6 +311,38 @@ def get_event_stats() -> dict[str, Any]:
             )
         ).fetchall()
 
+        open_incidents = conn.execute(
+            text(
+                """
+                SELECT COUNT(*)
+                FROM incidents
+                WHERE COALESCE(status, 'open') NOT IN ('resolved', 'closed')
+                """
+            )
+        ).scalar_one()
+
+        services = conn.execute(
+            text('SELECT COUNT(*) FROM services')
+        ).scalar_one()
+
+        deployments_last_24h = conn.execute(
+            text(
+                '''
+                SELECT COUNT(*)
+                FROM deployments
+                WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL '1 day'
+                '''
+            )
+        ).scalar_one() if engine.dialect.name != 'sqlite' else conn.execute(
+            text(
+                '''
+                SELECT COUNT(*)
+                FROM deployments
+                WHERE created_at >= datetime('now', '-1 day')
+                '''
+            )
+        ).scalar_one()
+
         last_24h = conn.execute(
             text(
                 '''
@@ -276,6 +364,9 @@ def get_event_stats() -> dict[str, Any]:
     return {
         'total_events': total,
         'events_last_24h': last_24h,
+        'open_incidents': open_incidents,
+        'services': services,
+        'deployments_last_24h': deployments_last_24h,
         'latest_event_timestamp': str(latest) if latest else None,
         'sources': [
             {

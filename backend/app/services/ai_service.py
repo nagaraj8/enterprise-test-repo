@@ -12,10 +12,14 @@ client = None
 
 def get_client():
     global client
+    api_key = os.getenv('OPENAI_API_KEY')
+
+    if not api_key:
+        return None
 
     if client is None:
         client = OpenAI(
-            api_key=os.getenv('OPENAI_API_KEY')
+            api_key=api_key
         )
 
     return client
@@ -45,8 +49,16 @@ def build_context(limit: int = 12) -> str:
 
 def ask_ai(question: str):
     context = build_context()
+    openai_client = get_client()
 
-    response = get_client().chat.completions.create(
+    if openai_client is None:
+        return (
+            "AI provider is not configured because OPENAI_API_KEY is missing. "
+            "Recent activity context is still available for manual review:\n\n"
+            f"{context}"
+        )
+
+    response = openai_client.chat.completions.create(
         model=os.getenv('OPENAI_MODEL', 'gpt-4.1-mini'),
         messages=[
             {

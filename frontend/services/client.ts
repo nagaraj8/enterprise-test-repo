@@ -8,7 +8,12 @@ export type EventRecord = {
   action?: string | null
   target?: string | null
   event_type?: string | null
+  service_name?: string | null
+  environment?: string | null
+  severity?: string | null
+  fingerprint?: string | null
   timestamp?: string | null
+  ingested_at?: string | null
   summary?: string | null
 }
 
@@ -24,6 +29,9 @@ export type SourceStat = {
 export type Overview = {
   total_events: number
   events_last_24h: number
+  open_incidents?: number
+  services?: number
+  deployments_last_24h?: number
   latest_event_timestamp?: string | null
   sources: SourceStat[]
 }

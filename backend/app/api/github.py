@@ -2,6 +2,7 @@ from fastapi import APIRouter, Request
 
 from app.services.embedding_service import create_embedding
 from app.services.event_repository import insert_event
+from app.services.operations_repository import observe_event
 
 router = APIRouter()
 
@@ -120,7 +121,7 @@ async def github_webhook(request: Request):
     print("ACTION:", action)
     print("==================================")
 
-    insert_event(
+    event_id = insert_event(
         source="github",
         actor=actor,
         action=action,
@@ -129,8 +130,25 @@ async def github_webhook(request: Request):
         raw_data=payload,
         embedding=embedding,
         timestamp=timestamp,
+        service_name=repository,
+        environment=payload.get("deployment", {}).get("environment"),
+    )
+
+    observe_event(
+        {
+            "id": event_id,
+            "source": "github",
+            "actor": actor,
+            "action": action,
+            "target": repository,
+            "event_type": github_event,
+            "service_name": repository,
+            "environment": payload.get("deployment", {}).get("environment"),
+            "timestamp": timestamp,
+        }
     )
 
     return {
-        "status": "stored"
+        "status": "stored",
+        "event_id": event_id,
     }
